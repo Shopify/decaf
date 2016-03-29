@@ -606,6 +606,14 @@ function mapStatement(node, meta) {
     return mapConditionalStatement(node, meta);
   } else if (type === 'Try') {
     return mapTryCatchBlock(node, meta);
+  } else if (type === 'Assign' &&
+    (
+      (node.variable && findIndex(get(node, 'variable.base.properties'), {soak: true}) > -1) ||
+      (node.variable && node.variable.properties && findIndex(node.variable.properties, {soak: true}) > -1)
+    )
+  ) {
+    // fallback early if variable name contains an existential operator
+    return mapConditionalAssignment(node, meta);
   }
 
   return b.expressionStatement(mapExpression(node, meta));
@@ -656,6 +664,38 @@ function mapBlockStatement(node, meta, factory = b.blockStatement) {
   addVariablesToScope(node.expressions, meta);
   const block = factory(mapBlockStatements(node, meta));
   return block;
+}
+
+function mapConditionalAssignment({variable, value, context, operator}, meta) {
+  let memberExpression = b.identifier(variable.base.value);
+  let condition;
+
+  for (const property of variable.properties) {
+    const identifier = b.identifier(property.name.value);
+
+    if (property.soak) {
+      const newCondition = b.binaryExpression('!=', memberExpression, b.literal(null));
+
+      if (!condition) {
+        condition = newCondition;
+      } else {
+        condition = b.logicalExpression('&&', condition, newCondition);
+      }
+    }
+
+    memberExpression = b.memberExpression(memberExpression, identifier);
+  }
+
+  return b.ifStatement(
+    condition,
+    b.blockStatement(
+      [
+        b.expressionStatement(
+          b.assignmentExpression(context || operator || '=', memberExpression, mapExpression(value, meta))
+        ),
+      ]
+    )
+  );
 }
 
 function mapInArrayExpression(node, meta) {

@@ -7,3 +7,4 @@ reporter.js
 .eslintrc
 .babelrc
 .travis.yml
+*.log

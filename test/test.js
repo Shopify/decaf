@@ -276,6 +276,24 @@ var yo = typeof a !== "undefined" && a !== null ? \
 ((ref = a.b) != null ? (typeof ref.c === "function" ? ref.c() : void 0) : void 0) : void 0;`;
     expect(compile(example)).toEqual(expected);
   });
+
+  it('foo?.bar = baz', () => {
+    const example = 'foo?.bar = baz';
+    const expected =
+`if (foo != null) {
+  foo.bar = baz;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('foo?.bar?.baz = qux', () => {
+    const example = 'foo?.bar.baz?.qux = yo';
+    const expected =
+`if (foo != null && foo.bar.baz != null) {
+  foo.bar.baz.qux = yo;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
 });
 
 describe('Boolean Expression', () => {
