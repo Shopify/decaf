@@ -4,7 +4,7 @@
   "description": "A coffeescript to es6 transpiler",
   "repository": {
     "type": "git",
-    "url": "git@github.com:juliankrispel/decaf.git"
+    "url": "git@github.com:Shopify/decaf.git"
   },
   "main": "dist/index.js",
   "bin": {
