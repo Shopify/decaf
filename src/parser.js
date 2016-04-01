@@ -675,7 +675,7 @@ function mapBlockStatement(node, meta, factory = b.blockStatement) {
 }
 
 function mapConditionalAssignment({variable, value, context, operator}, meta) {
-  const {condition, memberExpression} = mapSoakedChainToConditions(variable);
+  const {condition, memberExpression} = mapSoakedChainToConditions(variable, meta);
 
   return b.ifStatement(
     condition,
@@ -689,8 +689,8 @@ function mapConditionalAssignment({variable, value, context, operator}, meta) {
   );
 }
 
-function mapConditionalUpdateOperator({first: value, context, operator, flip}) {
-  const {condition, memberExpression} = mapSoakedChainToConditions(value);
+function mapConditionalUpdateOperator({first: value, context, operator, flip}, meta) {
+  const {condition, memberExpression} = mapSoakedChainToConditions(value, meta);
 
   return b.ifStatement(
     condition,
@@ -708,9 +708,22 @@ function nodeHasProperties(node) {
   return node && node.properties && node.properties.length > 0;
 }
 
-function mapSoakedChainToConditions({properties, base}) {
-  let memberExpression = b.identifier(base.value);
+function mapSoakedCallToUnsoakedCall(node, meta) {
+  return b.callExpression(
+    mapSoakedChainToConditions(node.variable, meta).memberExpression,
+    mapArguments(node.args, meta)
+  );
+}
+
+function mapSoakedChainToConditions({properties, base}, meta) {
+  let memberExpression;
   let condition;
+  if (base.constructor.name === 'Call') {
+    memberExpression = mapSoakedCallToUnsoakedCall(base, meta);
+    condition = mapSoakedChainToConditions(base.variable, meta).condition;
+  } else {
+    memberExpression = b.identifier(base.value);
+  }
 
   for (const property of properties) {
     let memberProperty;

@@ -339,6 +339,15 @@ var yo = typeof a !== "undefined" && a !== null ? \
 }`;
     expect(compile(example)).toEqual(expected);
   });
+
+  it('converts call in existential chain to if', () => {
+    const example = 'document.getElementById("id")?.scrollTop = 0;';
+    const expected =
+`if (document.getElementById("id") != null) {
+  document.getElementById("id").scrollTop = 0;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
 });
 
 describe('Boolean Expression', () => {
