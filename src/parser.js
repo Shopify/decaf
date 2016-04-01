@@ -614,6 +614,14 @@ function mapStatement(node, meta) {
   ) {
     // fallback early if variable name contains an existential operator
     return mapConditionalAssignment(node, meta);
+  } else if (type === 'Op' && ['--', '++'].indexOf(node.operator) > -1) {
+    const opTarget = node.first;
+    const baseIsSoaked = findIndex(opTarget.base.properties, {soak: true}) > -1;
+    const subPropertyIsSoaked = opTarget.properties && findIndex(opTarget.properties, {soak: true}) > -1;
+
+    if (baseIsSoaked || subPropertyIsSoaked) {
+      return mapConditionalUpdateOperator(node, meta);
+    }
   }
 
   return b.expressionStatement(mapExpression(node, meta));
@@ -667,24 +675,7 @@ function mapBlockStatement(node, meta, factory = b.blockStatement) {
 }
 
 function mapConditionalAssignment({variable, value, context, operator}, meta) {
-  let memberExpression = b.identifier(variable.base.value);
-  let condition;
-
-  for (const property of variable.properties) {
-    const identifier = b.identifier(property.name.value);
-
-    if (property.soak) {
-      const newCondition = b.binaryExpression('!=', memberExpression, b.literal(null));
-
-      if (!condition) {
-        condition = newCondition;
-      } else {
-        condition = b.logicalExpression('&&', condition, newCondition);
-      }
-    }
-
-    memberExpression = b.memberExpression(memberExpression, identifier);
-  }
+  const {condition, memberExpression} = mapSoakedChainToConditions(variable);
 
   return b.ifStatement(
     condition,
@@ -696,6 +687,57 @@ function mapConditionalAssignment({variable, value, context, operator}, meta) {
       ]
     )
   );
+}
+
+function mapConditionalUpdateOperator({first: value, context, operator, flip}) {
+  const {condition, memberExpression} = mapSoakedChainToConditions(value);
+
+  return b.ifStatement(
+    condition,
+    b.blockStatement(
+      [
+        b.expressionStatement(
+          b.updateExpression(context || operator, memberExpression, !flip)
+        ),
+      ]
+    )
+  );
+}
+
+function nodeHasProperties(node) {
+  return node && node.properties && node.properties.length > 0;
+}
+
+function mapSoakedChainToConditions({properties, base}) {
+  let memberExpression = b.identifier(base.value);
+  let condition;
+
+  for (const property of properties) {
+    let memberProperty;
+    const isArrayAccessor = (property.constructor.name === 'Index');
+
+    if (nodeHasProperties(property.index)) {
+      memberProperty = mapMemberExpression(property.index);
+    } else if (isArrayAccessor) {
+      memberProperty = mapLiteral(property.index);
+    } else {
+      memberProperty = b.identifier(property.name.value);
+    }
+
+    if (property.soak) {
+      const newCondition = b.binaryExpression('!=', memberExpression, b.literal(null));
+
+      if (!condition) {
+        condition = newCondition;
+      } else {
+        condition = b.logicalExpression('&&', condition, newCondition);
+      }
+    }
+
+    memberExpression = b.memberExpression(memberExpression, memberProperty, isArrayAccessor);
+  }
+
+  return { condition, memberExpression };
 }
 
 function mapInArrayExpression(node, meta) {

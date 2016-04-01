@@ -294,6 +294,51 @@ var yo = typeof a !== "undefined" && a !== null ? \
 }`;
     expect(compile(example)).toEqual(expected);
   });
+
+  it('converts literal array accessor in existential chain to if', () => {
+    const example = 'foo["baz"]?.foobar++';
+    const expected =
+`if (foo["baz"] != null) {
+  foo["baz"].foobar++;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('converts nested property array accessor in existential chain to if', () => {
+    const example = 'foo[bar.baz]?.foobar++';
+    const expected =
+`if (foo[bar.baz] != null) {
+  foo[bar.baz].foobar++;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('converts post-increment to if', () => {
+    const example = 'foo.bar?["baz"]?[qux.foo]?.foobar++';
+    const expected =
+`if (foo.bar != null && foo.bar["baz"] != null && foo.bar["baz"][qux.foo] != null) {
+  foo.bar["baz"][qux.foo].foobar++;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('converts pre-increment to if', () => {
+    const example = '++foo.bar?.foobar';
+    const expected =
+`if (foo.bar != null) {
+  ++foo.bar.foobar;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('converts addition-assignment to if', () => {
+    const example = 'foo?.count+= foo.bar';
+    const expected =
+`if (foo != null) {
+  foo.count += foo.bar;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
 });
 
 describe('Boolean Expression', () => {
