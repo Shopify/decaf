@@ -1333,6 +1333,33 @@ var {
 ref = this.options, this.a = ref.a, this.b = ref.b, ref;`;
     expect(compile(example)).toEqual(expected);
   });
+
+  it('does not declare this members', () => {
+    const example = `[@foo, bar] = ['foo', foobar];`;
+    const expected =
+`var bar;
+[this.foo, bar] = ["foo", foobar];`;
+
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('does not generate var declaration when assigning only to members', () => {
+    const example = `[@foo, @bar] = ['foo', foobar];`;
+    const expected =
+`[this.foo, this.bar] = ["foo", foobar];`;
+
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('declares non-member vars outside of conditional assignments', () => {
+    const example = `[@currentField, direction, foo] = params.order.split(' ') if params.order`;
+    const expected =
+`var direction;
+var foo;
+(params.order ? [this.currentField, direction, foo] = params.order.split(" ") : undefined);`;
+
+    expect(compile(example)).toEqual(expected);
+  });
 });
 
 describe('conditional statements', () => {

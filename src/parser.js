@@ -1001,6 +1001,38 @@ function insertSuperCalls(ast) {
   return ast;
 }
 
+function isArrayAssignmentWithThisReference(path) {
+  const assignedPath = path.value && path.value.left;
+  const isArrayAssignment = assignedPath && assignedPath.type === 'ArrayExpression';
+  const hasMemberExpressions = isArrayAssignment && jsc(assignedPath).find('MemberExpression').size() > 0;
+
+  return isArrayAssignment && hasMemberExpressions;
+}
+
+function insertArrayAssignmentVarDeclarations(assignmentPath) {
+  const identifiers = jsc(assignmentPath.value.left)
+    .find(jsc.Identifier)
+    .filter(path => path.parentPath.name === 'elements')
+    .paths()
+    .map(path => jsc.identifier(path.value.name))
+    .map(identifier => jsc.variableDeclarator(identifier, null));
+
+  if (identifiers.length > 0) {
+    jsc(assignmentPath)
+      .closest(jsc.Statement)
+      .insertBefore([
+        jsc.variableDeclaration('var', identifiers),
+      ]);
+  }
+}
+
+function getAssignmentIdentifiers(path) {
+  const elements = path.value && path.value.left && path.value.left.elements;
+  return elements ?
+    elements.filter(element => element.type !== jsc.MemberExpression.name) :
+    null;
+}
+
 function insertVariableDeclarations(ast) {
   jsc(ast)
   .find(jsc.AssignmentExpression, node =>
@@ -1016,18 +1048,25 @@ function insertVariableDeclarations(ast) {
     const needle = path.value.left.name;
     if (!path.scope.lookup(needle)) {
       if (path.parent && path.parent.value.type === 'ExpressionStatement') {
-        jsc(path).replaceWith(_path =>
-          b.variableDeclaration(
-            'var',
-            [b.variableDeclarator(
-              _path.value.left,
-              _path.value.right
-            )]
-          )
-        );
-        path.scope.scan(true);
+        if (isArrayAssignmentWithThisReference(path)) {
+          insertArrayAssignmentVarDeclarations(path);
+        } else {
+          jsc(path).replaceWith(_path =>
+            b.variableDeclaration(
+              'var',
+              [b.variableDeclarator(
+                _path.value.left,
+                _path.value.right
+              )]
+            )
+          );
+          path.scope.scan(true);
+        }
       } else {
-        path.scope.injectTemporary(path.value.left);
+        const identifiers = getAssignmentIdentifiers(path) || [path.value.left];
+        identifiers.reverse().forEach(id =>
+          path.scope.injectTemporary(id)
+        );
       }
     }
   });
