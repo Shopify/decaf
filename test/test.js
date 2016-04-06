@@ -1948,6 +1948,22 @@ describe('destructuring arguments', () => {
     expect(compile(example)).toEqual(expected);
   });
 
+  it('({@a, @b, c}) => c', () => {
+    const example = '({@a, @b, c}) => @a + c';
+    const expected =
+`(
+  {
+    a,
+    b,
+    c
+  }) => {
+  this.a = a;
+  this.b = b;
+  return this.a + c;
+};`;
+    expect(compile(example)).toEqual(expected);
+  });
+
   it('([a, b, c]) => a', () => {
     const example = `([a, b, c]) => a + b + c`;
     const expected =

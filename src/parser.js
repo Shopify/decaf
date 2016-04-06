@@ -78,7 +78,9 @@ function mapLiteral(node) {
 
 function mapKey(node) {
   const type = node.base.constructor.name;
-  if (type === 'Literal') {
+  if (node.properties && node.properties.length) {
+    return b.identifier(node.properties[0].name.value);
+  } else if (type === 'Literal') {
     return b.identifier(node.base.value);
   }
 }
@@ -200,7 +202,7 @@ function mapArguments(args, meta) {
     if (type === 'Arr') {
       return mapArrayPattern(arg.name, meta);
     } else if (type === 'Obj') {
-      return mapObjectPattern(arg.name.properties, meta);
+      return mapObjectPattern(arg.name.properties, meta, true);
     }
 
     return mapExpression(arg, meta);
@@ -959,6 +961,21 @@ function mapFunction(node, meta) {
     setupStatements = tailStatements.concat(setupStatements);
   }
 
+  if (meta.scope.argumentThisAgumentDestructuress) {
+    setupStatements = meta.scope.argumentThisAgumentDestructuress.map(argumentThisAgumentDestructures => (
+      b.expressionStatement(
+        b.assignmentExpression(
+          '=',
+          b.memberExpression(
+            b.thisExpression(),
+            argumentThisAgumentDestructures
+          ),
+          argumentThisAgumentDestructures
+        )
+      )
+    ));
+  }
+
   let block = mapBlockStatement(node.body, meta);
   if (isGenerator === false && node.name !== 'constructor') {
     block = addReturnStatementToBlock(block, meta);
@@ -1493,13 +1510,20 @@ function mapObjectPatternItem(node, meta) {
   throw new Error(`can't convert node of type: ${type} to ObjectPatternItem - not recognized`);
 }
 
-function mapObjectPattern(nodes, meta) {
+function mapObjectPattern(nodes, meta, extractThis = false) {
   return b.objectPattern(nodes.map(node => {
     const {operatorToken} = node;
     let prop;
+    const key = mapKey(node.variable || node, meta);
+
+    if (extractThis && node.properties && node.properties.length) {
+      meta.scope.argumentThisAgumentDestructuress = meta.scope.argumentThisAgumentDestructuress || [];
+      meta.scope.argumentThisAgumentDestructuress.push(key);
+    }
+
     prop = b.property(
       'init',
-      mapKey(node.variable || node, meta),
+      key,
       mapObjectPatternItem(node, meta)
     );
 
