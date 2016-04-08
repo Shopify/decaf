@@ -961,16 +961,16 @@ function mapFunction(node, meta) {
     setupStatements = tailStatements.concat(setupStatements);
   }
 
-  if (meta.scope.argumentThisAgumentDestructuress) {
-    setupStatements = meta.scope.argumentThisAgumentDestructuress.map(argumentThisAgumentDestructures => (
+  if (meta.scope.paramThisDestructures) {
+    setupStatements = meta.scope.paramThisDestructures.map(paramThisDestructure => (
       b.expressionStatement(
         b.assignmentExpression(
           '=',
           b.memberExpression(
             b.thisExpression(),
-            argumentThisAgumentDestructures
+            paramThisDestructure
           ),
-          argumentThisAgumentDestructures
+          paramThisDestructure
         )
       )
     ));
@@ -1517,8 +1517,8 @@ function mapObjectPattern(nodes, meta, extractThis = false) {
     const key = mapKey(node.variable || node, meta);
 
     if (extractThis && node.properties && node.properties.length) {
-      meta.scope.argumentThisAgumentDestructuress = meta.scope.argumentThisAgumentDestructuress || [];
-      meta.scope.argumentThisAgumentDestructuress.push(key);
+      meta.scope.paramThisDestructures = meta.scope.paramThisDestructures || [];
+      meta.scope.paramThisDestructures.push(key);
     }
 
     prop = b.property(
