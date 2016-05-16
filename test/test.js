@@ -295,6 +295,15 @@ var yo = typeof a !== "undefined" && a !== null ? \
     expect(compile(example)).toEqual(expected);
   });
 
+  it('doSomething (foo) => @bar.baz?.qux', () => {
+    const example = 'doSomething (foo) => @bar?';
+    const expected =
+`doSomething(foo => {
+  return this.bar != null;
+});`;
+    expect(compile(example)).toEqual(expected);
+  });
+
   it('converts literal array accessor in existential chain to if', () => {
     const example = 'foo["baz"]?.foobar++';
     const expected =
