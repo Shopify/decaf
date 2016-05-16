@@ -170,6 +170,14 @@ function mapOp(node, meta) {
       !node.flip);
   }
 
+  if (node.properties) {
+    return mapExpression(node, meta);
+  }
+
+  if (node.args) {
+    return mapCall(node, meta);
+  }
+
   if (!node.second) {
     return b.unaryExpression(
       operator,
@@ -1152,6 +1160,19 @@ function mapSwitchStatement(node, meta) {
 }
 
 function mapForStatement(node, meta) {
+  let blockStatement = mapBlockStatement(node.body, meta);
+
+  if (node.guard) {
+    const guardBase = node.guard.expression || node.guard;
+
+    blockStatement = b.blockStatement([
+      b.ifStatement(
+        mapOp(guardBase, meta),
+        blockStatement
+      ),
+    ]);
+  }
+
   if (node.object === false) {
     if (node.index === undefined) {
       const name = node.name === undefined
@@ -1163,7 +1184,7 @@ function mapForStatement(node, meta) {
           [b.variableDeclarator(name, null)]
         ),
         mapExpression(node.source, meta),
-        mapBlockStatement(node.body, meta)
+        blockStatement
       );
     }
     return b.forOfStatement(
@@ -1181,7 +1202,7 @@ function mapForStatement(node, meta) {
         ),
         []
       ),
-      mapBlockStatement(node.body, meta)
+      blockStatement
     );
   } else if (node.object === true) {
     let declaration;
@@ -1196,6 +1217,7 @@ function mapForStatement(node, meta) {
       ]);
       method = 'entries';
     }
+
     return b.forOfStatement(
       b.variableDeclaration(
         'let',
@@ -1208,7 +1230,7 @@ function mapForStatement(node, meta) {
         ),
         [mapExpression(node.source, meta)]
       ),
-      mapBlockStatement(node.body, meta)
+      blockStatement
     );
   }
 }

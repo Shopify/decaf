@@ -2592,3 +2592,146 @@ modulo1(1, 5);`;
     expect(compile(example)).toEqual(expected);
   });
 });
+
+describe('for loops with conditional', () => {
+  it('handles truthy property', () => {
+    const example =
+`
+for value in values when foo
+  loopAction(value);
+`;
+
+    const expected =
+`for (let value of values) {
+  if (foo) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('handles truthy existential property', () => {
+    const example = `loopAction(value) for value in values when value?`;
+
+    const expected =
+`for (let value of values) {
+  if (value) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('handles truthy member property', () => {
+    const example =
+`
+for value in values when foo.bar
+  loopAction(value);
+`;
+
+    const expected =
+`for (let value of values) {
+  if (foo.bar) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('handles existential truthy member property', () => {
+    const example =
+  `
+for value in values when foo.bar?.qux
+  loopAction(value)
+`;
+
+    const expected =
+`var ref;
+
+for (let value of values) {
+  if ((ref = foo.bar) != null ? ref.qux : void 0) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('handles conditional call', () => {
+    const example =
+  `
+    loopAction(value) for value in values when foo?()
+  `;
+
+    const expected =
+`for (let value of values) {
+  if (typeof foo === "function" ? foo() : void 0) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('handles member conditional call', () => {
+    const example = `loopAction(value) for value in values when foo?.bar?.qux?()`;
+    /* eslint-disable max-len */
+    const expected =
+`var ref;
+
+for (let value of values) {
+  if (typeof foo !== "undefined" && foo !== null ? ((ref = foo.bar) != null ? (typeof ref.qux === "function" ? ref.qux() : void 0) : void 0) : void 0) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('handles existential logical expression', () => {
+    const example =
+`
+for value in values when regex?.test(foo.bar) || regex.test(bar.foo)
+  loopAction(value);
+`;
+
+    const expected =
+`for (let value of values) {
+  if (((typeof regex !== "undefined" && regex !== null ? regex.test(foo.bar) : void 0)) || regex.test(bar.foo)) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('isnt with conditional member access', () => {
+    const example =
+`
+for value in values when foo.bar?[value] isnt bar[value]
+  return loopAction(value);
+`;
+
+    const expected =
+`var ref;
+
+for (let value of values) {
+  if ((((ref = foo.bar) != null ? ref[value] : void 0)) !== bar[value]) {
+    return loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('instanceof', () => {
+    const example =
+`
+for value in values when value instanceof Foo
+  loopAction(value)
+`;
+
+    const expected =
+`for (let value of values) {
+  if (value instanceof Foo) {
+    loopAction(value);
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+});
