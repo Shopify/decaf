@@ -2594,6 +2594,7 @@ modulo1(1, 5);`;
 });
 
 describe('for loops with conditional', () => {
+
   it('handles truthy property', () => {
     const example =
 `
@@ -2615,7 +2616,7 @@ for value in values when foo
 
     const expected =
 `for (let value of values) {
-  if (value) {
+  if (typeof value !== "undefined" && value !== null) {
     loopAction(value);
   }
 }`;

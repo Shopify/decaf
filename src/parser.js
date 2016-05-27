@@ -1159,18 +1159,25 @@ function mapSwitchStatement(node, meta) {
   );
 }
 
+function mapForGuard(guardNode, blockStatement, meta) {
+  const isExistential = guardNode.constructor.name === 'Existence';
+  const guardClause = isExistential ?
+    mapExistentialExpression(guardNode, meta) :
+    mapOp(guardNode.expression || guardNode, meta);
+
+  return b.blockStatement([
+    b.ifStatement(
+      guardClause,
+      blockStatement
+    ),
+  ]);
+}
+
 function mapForStatement(node, meta) {
   let blockStatement = mapBlockStatement(node.body, meta);
 
   if (node.guard) {
-    const guardBase = node.guard.expression || node.guard;
-
-    blockStatement = b.blockStatement([
-      b.ifStatement(
-        mapOp(guardBase, meta),
-        blockStatement
-      ),
-    ]);
+    blockStatement = mapForGuard(node.guard, blockStatement, meta);
   }
 
   if (node.object === false) {
