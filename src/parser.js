@@ -107,15 +107,7 @@ function mapSlice(node, meta) {
   const {range} = node;
   const args = [range.from ? mapExpression(range.from, meta) : b.literal(0)];
   if (range.to) {
-    let to = mapExpression(range.to, meta);
-    if (!range.exclusive) {
-      if (to.type === 'Literal' && typeof to.value === 'number' && Math.round(to.value) === to.value) {
-        to.value += 1;
-      } else {
-        to = b.binaryExpression('+', to, b.literal(1));
-      }
-    }
-    args.push(to);
+    args.push(mapExpression(range.to, meta));
   }
   return b.callExpression(b.identifier('slice'), args);
 }
@@ -199,6 +191,13 @@ function mapOp(node, meta) {
 
 function mapArguments(args, meta) {
   return args.map(arg => {
+    const argName = get(arg.name, 'constructor.name');
+    if ((argName === 'Obj' && arg.name.objects.length === 0) ||
+        (argName === 'Arr' && arg.name.objects.length === 0)
+       ) {
+      return b.identifier(meta.scope.freeVariable('arg'));
+    }
+
     if (arg.constructor.name === 'Expansion') {
       return b.restElement(b.identifier(meta.scope.freeVariable('args')));
     }
@@ -219,7 +218,7 @@ function mapArguments(args, meta) {
 
 function mapCall(node, meta) {
   let left;
-  const superMethodName = meta.superMethodName;
+  const {superMethodName} = meta;
 
   // fallback early if variable name contains an existential operator
   if (node.variable && (findIndex(get(node, 'variable.base.properties'), {soak: true}) > -1 ||
@@ -255,12 +254,12 @@ function mapClassBodyElement(node, meta) {
   const superMethodName = node.variable.base.value;
   let elementType = 'method';
   let isStatic = false;
-  const type = node.constructor.name;
+  // const type = node.constructor.name;
 
-  if (type === 'Assign' && node.value) {
-    node.value.name = node.variable.base.value;
-    node.value.variable = node.variable;
-  }
+  //  if (type === 'Assign' && node.value) {
+  //    node.value.name = node.variable.base.value;
+  //    node.value.variable = node.variable;
+  //  }
 
   if (node.variable.this === true) {
     isStatic = true;
@@ -282,6 +281,7 @@ function mapClassBodyElement(node, meta) {
   const _meta = Object.assign(
     {},
     meta,
+    {isSuperMethod: true},
     {superMethodName});
 
   return b.methodDefinition(
@@ -326,7 +326,11 @@ function mapClassExpressions(expressions, meta) {
         return arr.concat([mapStaticClassProperty(expr, meta)]);
       }
     } else if (type === 'Value') {
-      classElements = expr.base.properties;
+      classElements = expr.base.properties
+      // filter out instance field variables
+      .filter(prop => !(get(prop, 'operatorToken.value') === ':' &&
+                        get(prop, 'value.constructor.name') !== 'Code' &&
+                        get(prop, 'variable.base.value') !== 'this'));
       classElements = unbindMethods(classElements);
       classElements = classElements.filter(el => el.constructor.name !== 'Comment');
       classElements = classElements.map(el => mapClassBodyElement(el, meta));
@@ -436,10 +440,14 @@ function mapClassDeclaration(node, meta) {
   }
 
   if (!node.variable) {
-    return b.classDeclaration(
-      b.identifier(meta.scope.freeVariable('unnamedClass')),
-      mapClassBody(node.body, meta),
-      parent
+    return b.expressionStatement(
+      b.parenthesizedExpression(
+        b.classExpression(
+          null,
+          mapClassBody(node.body, meta),
+          parent
+        )
+      )
     );
   }
 
@@ -530,41 +538,22 @@ function mapIfStatement(node, meta) {
   );
 }
 
-function isStatement(expr) {
-  const type = expr.constructor.name;
-  switch (type) {
-    case 'Literal':
-      if (expr.value === 'break' || expr.value === 'continue') {
-        return true;
-      }
-      return false;
-    case 'Throw':
-    case 'For':
-    case 'While':
-    case 'Return':
-    case 'If':
-    case 'Break':
-      return true;
-    default:
-      return false;
-  }
+function isTernaryOperation(node) {
+  const regex = /^(Literal|Code)/;
+
+  return (
+    get(node, 'body.expressions.length') === 1 &&
+    regex.test(get(node, 'body.expressions[0].base.constructor.name')) &&
+    regex.test(get(node, 'elseBody.expressions[0].base.constructor.name')) &&
+    get(node, 'elseBody.expressions.length') === 1
+  );
 }
 
 function mapConditionalStatement(node, meta) {
-  // If the conditional has more than one test
-  // or more than one expression in either block we
-  // create an if statement otherwise we use a conditional
-  // expression
-
-  if (
-    node.elseBody && node.elseBody.expressions.length > 1 ||
-    node.body && node.body.expressions.length > 1 ||
-    node.body && any(node.body.expressions, expr => isStatement(expr)) ||
-    node.elseBody && any(node.elseBody.expressions, expr => isStatement(expr))) {
-    return mapIfStatement(node, meta);
+  if (isTernaryOperation(node)) {
+    return b.expressionStatement(mapConditionalExpression(node, meta));
   }
-
-  return b.expressionStatement(mapConditionalExpression(node, meta));
+  return mapIfStatement(node, meta);
 }
 
 function mapTryCatchBlock(node, meta) {
@@ -619,7 +608,7 @@ function mapStatement(node, meta) {
   } else if (type === 'Class') {
     return mapClassDeclaration(node, meta);
   } else if (type === 'Switch') {
-    return addBreakStatementsToSwitch(mapSwitchStatement(node, meta));
+    return mapSwitchStatement(node, meta);
   } else if (type === 'If') {
     return mapConditionalStatement(node, meta);
   } else if (type === 'Try') {
@@ -646,7 +635,37 @@ function mapStatement(node, meta) {
 }
 
 function mapBlockStatements(node, meta) {
-  return node.expressions.map(expr => mapStatement(expr, meta));
+  return flatten(node.expressions.map(expr => {
+    const type = expr.constructor.name;
+    let prototypeProps = [];
+    if (type === 'Class') {
+      // extract prototype assignments
+      prototypeProps = flatten(expr.body.expressions
+        .filter(ex => (ex.constructor.name === 'Value'))
+        .map(ex => (ex.base.properties)))
+        .filter(ex => (get(ex, 'operatorToken.value') === ':' &&
+                       get(ex, 'value.constructor.name') !== 'Code' &&
+                       get(ex, 'variable.base.value') !== 'this'))
+        .filter(ex => get(ex, 'value.constructor.name') !== 'Code')
+        .map(ex => (
+          b.expressionStatement(
+            b.assignmentExpression(
+              '=',
+              b.memberExpression(
+                b.memberExpression(
+                  mapExpression(expr.variable),
+                  b.identifier('prototype')
+                ),
+                mapExpression(ex.variable, meta)
+              ),
+              mapExpression(ex.value, meta)
+            )
+          )
+        ));
+    }
+
+    return [mapStatement(expr, meta)].concat(prototypeProps);
+  }));
 }
 
 function addVariablesToScope(nodes = [], meta, context = false) {
@@ -850,7 +869,9 @@ function lastReturnStatement(nodeList = []) {
   if (nodeList.length > 0) {
     const lastIndex = nodeList.length - 1;
 
-    if (nodeList[lastIndex].type === 'ThrowStatement') {
+    if (nodeList[lastIndex].type === 'SwitchStatement') {
+      nodeList[lastIndex] = addReturnStatementsToSwitch(nodeList[lastIndex]);
+    } else if (nodeList[lastIndex].type === 'ThrowStatement') {
       return nodeList;
     } else if (nodeList[lastIndex].type === 'IfStatement') {
       nodeList[lastIndex] = addReturnStatementToIfBlocks(nodeList[lastIndex]);
@@ -864,7 +885,8 @@ function lastReturnStatement(nodeList = []) {
 }
 
 function lastBreakStatement(nodeList = []) {
-  if (nodeList.length > 0) {
+  const returns = nodeList.filter(node => node.type === 'ReturnStatement');
+  if (returns.length < 1 && nodeList.length > 0) {
     nodeList.push(b.breakStatement());
   }
   return nodeList;
@@ -908,6 +930,7 @@ function detectIllegalSuper(node, meta) {
 
   const hasSuperCallAfterThisAssignments =
     isExtendedClass &&
+    isConstructor &&
     firstThisAssignmentIndex > -1 &&
     superIndex > firstThisAssignmentIndex;
 
@@ -925,10 +948,12 @@ function mapFunction(node, meta) {
   //   bound: Boolean
   // }
   const isGenerator = node.isGenerator;
+  const isConstructor = meta.superMethodName === 'constructor' && meta.isSuperMethod;
 
+  // throw an error when there's an illegal super statement
   detectIllegalSuper(node, meta);
 
-  meta = Object.assign({}, meta, {scope: node.makeScope(meta.scope)});
+  meta = Object.assign({}, meta, {scope: node.makeScope(meta.scope)}, {isSuperMethod: false});
 
   let args = mapArguments(node.params, meta);
   // restIndex is the location of the splat argument
@@ -997,7 +1022,8 @@ function mapFunction(node, meta) {
   meta.scope.method.context = 'this';
 
   let block = mapBlockStatement(node.body, meta);
-  if (isGenerator === false && node.name !== 'constructor') {
+
+  if (isGenerator === false && !isConstructor) {
     block = addReturnStatementToBlock(block, meta);
   }
 
@@ -1021,7 +1047,13 @@ function insertSuperCall(path) {
       classMethods[constructorIndex]
         .value.body.body
         .unshift(
-          b.expressionStatement(b.callExpression(b.identifier('super'), [])));
+          b.expressionStatement(
+            b.callExpression(
+              b.identifier('super'),
+              [b.spreadElement(b.identifier('arguments'))]
+            )
+          )
+        );
     }
   }
 }
@@ -1070,12 +1102,34 @@ function getAssignmentIdentifiers(path) {
     null;
 }
 
+function findNodeParent(node, matcher) {
+  if (node.parent) {
+    if (matcher(node.parent)) {
+      return node.parent;
+    }
+    return findNodeParent(node.parent, matcher);
+  }
+}
+
+function insertBreakStatements(ast) {
+  jsc(ast)
+  // find all switch statements
+  .find(jsc.SwitchStatement)
+  .forEach(node => (
+    jsc(node).replaceWith(path => addBreakStatementsToSwitch(path.value))
+  ));
+  return ast;
+}
+
 function insertVariableDeclarations(ast) {
   jsc(ast)
-  .find(jsc.AssignmentExpression, node =>
+  // first we're going to find all assignments in our code
+  .find(jsc.AssignmentExpression, node => (
     !n.MemberExpression.check(node.left) &&
     get(node, 'operator') === '='
-  )
+  ))
+  // then we're going to search for the uppermost assignment
+  // of similarly named variables
   .forEach(path => {
     // There's something weird with AssignmentExpressions vs. AssignmentPatterns in function arguments that
     // causes scope.lookup to not find the definition properly.
@@ -1084,21 +1138,23 @@ function insertVariableDeclarations(ast) {
     }
     const needle = path.value.left.name;
     if (!path.scope.lookup(needle)) {
-      if (path.parent && path.parent.value.type === 'ExpressionStatement') {
-        if (isArrayAssignmentWithThisReference(path)) {
-          insertArrayAssignmentVarDeclarations(path);
-        } else {
-          jsc(path).replaceWith(_path =>
-            b.variableDeclaration(
-              'var',
-              [b.variableDeclarator(
-                _path.value.left,
-                _path.value.right
-              )]
-            )
-          );
-          path.scope.scan(true);
-        }
+      const blockNode = findNodeParent(path, node => get(node, 'value.type') === 'BlockStatement');
+      if (path.parent && path.parent.value.type === 'ExpressionStatement' && isArrayAssignmentWithThisReference(path)) {
+        insertArrayAssignmentVarDeclarations(path);
+      } else if (path.parent &&
+          get(path, 'parent.parent.value.type') !== 'SwitchCase' &&
+          path.parent.value.type === 'ExpressionStatement' &&
+          get(blockNode, 'parent.value.type') !== 'IfStatement') {
+        jsc(path).replaceWith(_path =>
+          b.variableDeclaration(
+            'var',
+            [b.variableDeclarator(
+              _path.value.left,
+              _path.value.right
+            )]
+          )
+        );
+        path.scope.scan(true);
       } else {
         const identifiers = getAssignmentIdentifiers(path) || [path.value.left];
         identifiers.reverse().forEach(id =>
@@ -1187,7 +1243,7 @@ function mapForStatement(node, meta) {
         : mapExpression(node.name, Object.assign({}, meta, { left: true }));
       return b.forOfStatement(
         b.variableDeclaration(
-          'let',
+          'var',
           [b.variableDeclarator(name, null)]
         ),
         mapExpression(node.source, meta),
@@ -1196,7 +1252,7 @@ function mapForStatement(node, meta) {
     }
     return b.forOfStatement(
       b.variableDeclaration(
-        'let',
+        'var',
         [b.variableDeclarator(b.arrayPattern([
           mapExpression(node.index, meta),
           mapExpression(node.name, meta),
@@ -1227,7 +1283,7 @@ function mapForStatement(node, meta) {
 
     return b.forOfStatement(
       b.variableDeclaration(
-        'let',
+        'var',
         [b.variableDeclarator(declaration, null)]
       ),
       b.callExpression(
@@ -1352,8 +1408,9 @@ function addReturnStatementsToSwitch(node) {
 }
 
 function addBreakStatementsToSwitch(node) {
-  node.cases = node.cases.map(switchCase => {
-    if (switchCase.test !== null) {
+  node.cases = node.cases.map((switchCase, index) => {
+    const isLastCase = (index + 1) === node.cases.length;
+    if (switchCase.test !== null && !isLastCase) {
       switchCase.consequent = lastBreakStatement(switchCase.consequent);
     }
     return switchCase;
@@ -1651,6 +1708,7 @@ export function compile(source, opts, parse = coffeeParse) {
     compiledSource => Object.assign({}, compiledSource, {code: compiledSource.code.replace(doubleSemicolon, ';')}),
     jsAst => recast.print(jsAst, opts),
     insertSuperCalls,
+    insertBreakStatements,
     insertVariableDeclarations,
     csAst => transpile(csAst, {options: opts}),
     parse);
