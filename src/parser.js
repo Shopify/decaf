@@ -1097,9 +1097,12 @@ function insertArrayAssignmentVarDeclarations(assignmentPath) {
 
 function getAssignmentIdentifiers(path) {
   const elements = path.value && path.value.left && path.value.left.elements;
-  return elements ?
-    elements.filter(element => element.type !== jsc.MemberExpression.name) :
-    null;
+  if (!elements) {
+    return null;
+  }
+
+  const inScopeIds = elements.filter(element => element.type !== jsc.MemberExpression.name);
+  return new Set(inScopeIds);
 }
 
 function findNodeParent(node, matcher) {
@@ -1157,9 +1160,10 @@ function insertVariableDeclarations(ast) {
         path.scope.scan(true);
       } else {
         const identifiers = getAssignmentIdentifiers(path) || [path.value.left];
-        identifiers.reverse().forEach(id =>
+        identifiers.forEach(id =>
           path.scope.injectTemporary(id)
         );
+        path.scope.scan(true);
       }
     }
   });
