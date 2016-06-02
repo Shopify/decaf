@@ -1649,7 +1649,7 @@ catch err
     const expected =
 `try {
   var [[], name, context] = expression.match(/s*['"](.*?)['"](?:,s*(.*))?s*/);
-} catch (undefined) {}`;
+} finally {}`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1696,7 +1696,7 @@ finally
 `var x = (() => {
   try {
     return y();
-  } catch (undefined) {}
+  } finally {}
 })();`;
     expect(compile(example)).toEqual(expected);
   });
@@ -1725,7 +1725,7 @@ var x = (() => {
     })();
 
     return a + " boo";
-  } catch (undefined) {}
+  } finally {}
 })();`;
     expect(compile(example)).toEqual(expected);
   });
