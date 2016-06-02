@@ -1083,15 +1083,12 @@ function insertArrayAssignmentVarDeclarations(assignmentPath) {
     .find(jsc.Identifier)
     .filter(path => path.parentPath.name === 'elements')
     .paths()
-    .map(path => jsc.identifier(path.value.name))
-    .map(identifier => jsc.variableDeclarator(identifier, null));
+    .map(path => path.value.name);
 
   if (identifiers.length > 0) {
-    jsc(assignmentPath)
-      .closest(jsc.Statement)
-      .insertBefore([
-        jsc.variableDeclaration('var', identifiers),
-      ]);
+    identifiers.forEach(id =>
+      assignmentPath.scope.injectTemporary(jsc.identifier(id), null)
+    );
   }
 }
 

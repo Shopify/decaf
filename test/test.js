@@ -1440,9 +1440,12 @@ ref = this.options, this.a = ref.a, this.b = ref.b, ref;`;
   it('declares non-member vars outside of conditional assignments', () => {
     const example = `[@currentField, direction, foo] = params.order.split(' ') if params.order`;
     const expected =
-`var direction;
-var foo;
-(params.order ? [this.currentField, direction, foo] = params.order.split(" ") : undefined);`;
+`var foo;
+var direction;
+
+if (params.order) {
+  [this.currentField, direction, foo] = params.order.split(" ");
+}`;
 
     expect(compile(example)).toEqual(expected);
   });
