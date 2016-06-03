@@ -11,6 +11,10 @@ function compile(source) {
 describe('Values', () => {
   it('strings', () => {
     expect(compile('"yoyoyo"')).toEqual('"yoyoyo";');
+    expect(compile(`"#{_.escape(text).replace(/\\n/g, '<br>')}<br>"`)).toEqual(`(_.escape(text).replace(/\\n/g, "<br>")) + "<br>";`);
+    expect(compile(`'\\''`)).toEqual(`"'";`);
+    expect(compile(`"\\""`)).toEqual(`"\\"";`);
+    expect(compile(`"\\\\\\\\"`)).toEqual(`"\\\\";`);
   });
 
   it('numbers', () => {
@@ -63,6 +67,18 @@ describe('multiline strings', () => {
 "
 """`;
     const expected = String.raw`"\"";`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('should escape more complex strings properly', () => {
+    const example =
+`"""
+<div id="outer" style="height: #{CONTAINER_HEIGHT}px; overflow: scroll">
+  <div id="inner" style="height: #{CONTENT_HEIGHT}px"></div>
+</div>
+"""`;
+
+    const expected = `"<div id=\\"outer\\" style=\\"height: " + (CONTAINER_HEIGHT) + "px; overflow: scroll\\">\\n  <div id=\\"inner\\" style=\\"height: " + (CONTENT_HEIGHT) + "px\\"></div>\\n</div>";`; // eslint-disable-line max-len
     expect(compile(example)).toEqual(expected);
   });
 });
@@ -522,13 +538,19 @@ describe('parenthesized expressions', () => {
 
   it(`foo('bar') unless a && b`, () => {
     const example = `foo('bar') unless a && b`;
-    const expected = `(!(a && b) ? foo("bar") : undefined);`;
+    const expected =
+`if (!(a && b)) {
+  foo("bar");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
   it(`foo('bar') if !(a && b && !(c && d))`, () => {
     const example = `foo('bar') if !(a && b && !(c && d))`;
-    const expected = `(!(a && b && !(c && d)) ? foo("bar") : undefined);`;
+    const expected =
+`if (!(a && b && !(c && d))) {
+  foo("bar");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 });
@@ -715,6 +737,15 @@ bam = "bye";`;
     @a = 'boom'
     super`;
     expect(compile.bind(this, example)).toThrow();
+  });
+
+  it('doesn\'t throw an error when super is called within a method other than constructor', () => {
+    const example =
+`class A extends B
+  b: () ->
+    @a = 'boom'
+    super`;
+    expect(compile.bind(this, example)).toNotThrow();
   });
 
   it('declares variables in class methods', () => {
@@ -904,6 +935,12 @@ describe('FunctionExpression', () => {
 };`;
     expect(compile(example)).toEqual(expected);
   });
+
+  it('turns empty object or array parameter into normal parameter, prevents naming collisions', () => {
+    const example = 'fn = ({}, bo, [], ba) ->';
+    const expected = `var fn = function(arg, bo, arg1, ba) {};`;
+    expect(compile(example)).toEqual(expected);
+  });
 });
 
 describe('ClassExpression', () => {
@@ -934,21 +971,15 @@ describe('ClassExpression', () => {
     expect(compile(example)).toEqual(expected);
   });
 
-  it('can compile unnamed class expressions and prevent naming collisions', () => {
+  it('can compile unnamed class expressions', () => {
     const example =
 `class extends Parent
-  boom: ->
-class extends Parent
   boom: ->`;
 
     const expected =
-`class unnamedClass extends Parent {
+`(class extends Parent {
   boom() {}
-}
-
-class unnamedClass1 extends Parent {
-  boom() {}
-}`;
+});`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1078,9 +1109,24 @@ class unnamedClass1 extends Parent {
   b: [1,2,3,4]
 `;
     const expected =
+`class A {}
+A.prototype.b = [1, 2, 3, 4];`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('renders class instance fields', () => {
+    const example =
+`class A
+  setup: _.once () ->
+  c: () ->
+  bam: 123`;
+    const expected =
 `class A {
-  b = [1, 2, 3, 4];
-}`;
+  c() {}
+}
+
+A.prototype.setup = _.once(function() {});
+A.prototype.bam = 123;`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1093,8 +1139,9 @@ class unnamedClass1 extends Parent {
     const expected =
 `class A {
   static b = [1, 2, 3, 4];
-  c = [1, 2, 3, 4];
-}`;
+}
+
+A.prototype.c = [1, 2, 3, 4];`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1160,14 +1207,14 @@ class unnamedClass1 extends Parent {
   constructor: ()->
     fn = (foo)->
       foo = 'foo'
-      bar = 'dw'
+      bar = 'foobar'
       super a + 'b'`;
     const expected =
 `class A {
   constructor() {
     var fn = function(foo) {
       foo = "foo";
-      var bar = "dw";
+      var bar = "foobar";
       return super(a + "b");
     };
   }
@@ -1260,7 +1307,7 @@ class unnamedClass1 extends Parent {
       const expected =
 `class A extends B {
   constructor() {
-    super();
+    super(...arguments);
     this.b = this.b.bind(this);
   }
 
@@ -1280,7 +1327,7 @@ class unnamedClass1 extends Parent {
       const expected =
 `var ClassA = class A extends B {
   constructor() {
-    super();
+    super(...arguments);
     this.b = this.b.bind(this);
   }
 
@@ -1409,9 +1456,12 @@ ref = this.options, this.a = ref.a, this.b = ref.b, ref;`;
   it('declares non-member vars outside of conditional assignments', () => {
     const example = `[@currentField, direction, foo] = params.order.split(' ') if params.order`;
     const expected =
-`var direction;
-var foo;
-(params.order ? [this.currentField, direction, foo] = params.order.split(" ") : undefined);`;
+`var foo;
+var direction;
+
+if (params.order) {
+  [this.currentField, direction, foo] = params.order.split(" ");
+}`;
 
     expect(compile(example)).toEqual(expected);
   });
@@ -1425,7 +1475,9 @@ if explosion is true
   alert 'BOOM'
 `;
     const expected =
-`(explosion === true ? alert("BOOM") : undefined);`;
+`if (explosion === true) {
+  alert("BOOM");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1456,7 +1508,9 @@ if explosion is true
 `;
     const expected =
 `if (explosion === true) {
-  (fake !== false ? alert("BOOM") : undefined);
+  if (fake !== false) {
+    alert("BOOM");
+  }
 }`;
     expect(compile(example)).toEqual(expected);
   });
@@ -1466,7 +1520,10 @@ if explosion is true
 `if explosion is true and boom is false and other
   alert 'BOOM'
 `;
-    const expected = `(explosion === true && boom === false && other ? alert("BOOM") : undefined);`;
+    const expected =
+`if (explosion === true && boom === false && other) {
+  alert("BOOM");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1499,19 +1556,48 @@ else
     const example =
 `unless explosion is false
   alert 'BOOM'`;
-    const expected = `(explosion !== false ? alert("BOOM") : undefined);`;
+    const expected =
+`if (explosion !== false) {
+  alert("BOOM");
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('avoids multiple declarations of the same variable', () => {
+    const example =
+`switch word
+  when 'hello'
+    a = 'boom'
+  else
+    a = 'bim'`;
+    const expected =
+`var a;
+
+switch (word) {
+case "hello":
+  a = "boom";
+  break;
+default:
+  a = "bim";
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('maps reverse if statements', () => {
     const example = `console.log 'boom' if condition is true`;
-    const expected = `(condition === true ? console.log("boom") : undefined);`;
+    const expected =
+`if (condition === true) {
+  console.log("boom");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('maps long reverse if statements', () => {
     const example = `console.log 'boom' if condition is true and bam isnt false`;
-    const expected = `(condition === true && bam !== false ? console.log("boom") : undefined);`;
+    const expected =
+`if (condition === true && bam !== false) {
+  console.log("boom");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -1572,13 +1658,13 @@ catch err
 `try
   boom()
 catch err
-  bam = 'dw'
+  bam = 'boofar'
   console.log 'boom'`;
     const expected =
 `try {
   boom();
 } catch (err) {
-  var bam = "dw";
+  var bam = "boofar";
   console.log("boom");
 }`;
     expect(compile(example)).toEqual(expected);
@@ -1675,7 +1761,6 @@ default:
 case "joe":
 case "anne":
   say("hi");
-  break;
 }`;
     expect(compile(example)).toEqual(expected);
   });
@@ -1735,7 +1820,7 @@ describe('comprehensions', () => {
 `for food in ['toast', 'cheese', 'wine']
   eat food`;
     const expected =
-`for (let food of ["toast", "cheese", "wine"]) {
+`for (var food of ["toast", "cheese", "wine"]) {
   eat(food);
 }`;
     expect(compile(example)).toEqual(expected);
@@ -1743,7 +1828,7 @@ describe('comprehensions', () => {
 
   it('a(b) for [a, b] in c', () => {
     const expected =
-`for (let [a, b] of c) {
+`for (var [a, b] of c) {
   a(b);
 }`;
     expect(compile('a(b) for [a, b] in c')).toEqual(expected);
@@ -1751,7 +1836,7 @@ describe('comprehensions', () => {
 
   it('a(b) for {a, b} in c', () => {
     const expected =
-`for (let {
+`for (var {
   a,
   b
 } of c) {
@@ -1765,7 +1850,7 @@ describe('comprehensions', () => {
     const example =
 `say key, value for key, value of {a: 1}`;
     const expected =
-`for (let [key, value] of Object.entries({
+`for (var [key, value] of Object.entries({
   a: 1
 })) {
   say(key, value);
@@ -1777,7 +1862,7 @@ describe('comprehensions', () => {
     const example =
 `say key for key of {a: 1}`;
     const expected =
-`for (let key of Object.keys({
+`for (var key of Object.keys({
   a: 1
 })) {
   say(key);
@@ -1845,7 +1930,7 @@ describe('comprehensions', () => {
 `A.B = class B {
   c() {
     return (() => {
-      for (let d of (function() {
+      for (var d of (function() {
           var results = [];
 
           for (var i = 0; (0 <= e ? i <= e : i >= e); (0 <= e ? i++ : i--)) {
@@ -1883,7 +1968,7 @@ describe('comprehensions', () => {
   it('a(b) for a, b in c', () => {
     const example = `a(b) for a, b in c`;
     const expected =
-`for (let [b, a] of c.entries()) {
+`for (var [b, a] of c.entries()) {
   a(b);
 }`;
     expect(compile(example)).toEqual(expected);
@@ -1892,7 +1977,7 @@ describe('comprehensions', () => {
   it('a for [0..1]', () => {
     const example = `a for [0..1]`;
     const expected =
-`for (let _i of [0, 1]) {
+`for (var _i of [0, 1]) {
   a;
 }`;
     expect(compile(example)).toEqual(expected);
@@ -1919,8 +2004,35 @@ describe('comprehensions', () => {
   it(`1 for a, b in c.slice(1)`, () => {
     const example = `1 for a, b in c.slice(1)`;
     const expected =
-`for (let [b, a] of c.slice(1).entries()) {
+`for (var [b, a] of c.slice(1).entries()) {
   1;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+});
+
+describe('for loops with conditional', () => {
+  it('boom() for i in items when not false', () => {
+    const example = 'boom() for i in items when not false';
+    const expected =
+`for (var i of items) {
+  if (!false) {
+    boom();
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('for i in items when not false \n boom() ', () => {
+    const example =
+`for i in items when not false
+  boom()
+`;
+    const expected =
+`for (var i of items) {
+  if (!false) {
+    boom();
+  }
 }`;
     expect(compile(example)).toEqual(expected);
   });
@@ -2077,6 +2189,12 @@ describe('slices', () => {
     expect(compile(example)).toEqual(expected);
   });
 
+  it('bam[1...-1]', () => {
+    const example = `bam[1...-1]`;
+    const expected = `bam.slice(1, -1);`;
+    expect(compile(example)).toEqual(expected);
+  });
+
   it('bam[a()...b()]', () => {
     const example = `bam[a()...b()]`;
     const expected = `bam.slice(a(), b());`;
@@ -2091,19 +2209,19 @@ describe('slices', () => {
 
   it('bam[1..10]', () => {
     const example = `bam[1..10]`;
-    const expected = `bam.slice(1, 11);`;
+    const expected = `bam.slice(1, 10);`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('bam[1..10.5]', () => {
     const example = `bam[1..10.5]`;
-    const expected = `bam.slice(1, 10.5 + 1);`;
+    const expected = `bam.slice(1, 10.5);`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('bam[a()..b()]', () => {
     const example = `bam[a()..b()]`;
-    const expected = `bam.slice(a(), b() + 1);`;
+    const expected = `bam.slice(a(), b());`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -2115,7 +2233,7 @@ describe('slices', () => {
 
   it('bam[..1]', () => {
     const example = `bam[..1]`;
-    const expected = `bam.slice(0, 2);`;
+    const expected = `bam.slice(0, 1);`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -2173,7 +2291,7 @@ describe('conditional expressions', () => {
     const expected =
 `if (rand !== ord) {
   while (true) {
-    for (let a of c) {
+    for (var a of c) {
       say("hi");
     }
   }
@@ -2184,7 +2302,10 @@ describe('conditional expressions', () => {
 
   it(`console.log "boom" if "a" of b`, () => {
     const example = `console.log "boom" if "a" of b`;
-    const expected = `("a" in b ? console.log("boom") : undefined);`;
+    const expected =
+`if ("a" in b) {
+  console.log("boom");
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -2227,10 +2348,12 @@ describe('conditional expressions', () => {
       abc`;
     const expected =
 `var b = (() => {
+  var abc;
+
   if (a === "loo") {
     return "boom";
   } else if (boom() === 2) {
-    var abc = "bom" + 123;
+    abc = "bom" + 123;
     return abc;
   }
 })();`;
@@ -2253,7 +2376,9 @@ describe('return statements', () => {
   case "b":
     return "c";
   case "c":
-    return (c === "d" ? c = b : undefined);
+    if (c === "d") {
+      return c = b;
+    }
   }
 })();`;
     expect(compile(example)).toEqual(expected);
@@ -2268,16 +2393,20 @@ describe('return statements', () => {
       when 'c'
         c = b if c is 'd'`;
     const expected =
-`var a = (b !== true ? (() => {
+`var a = (() => {
   var c;
 
-  switch (a) {
-  case "b":
-    return "c";
-  case "c":
-    return (c === "d" ? c = b : undefined);
+  if (b !== true) {
+    switch (a) {
+    case "b":
+      return "c";
+    case "c":
+      if (c === "d") {
+        return c = b;
+      }
+    }
   }
-})() : undefined);`;
+})();`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -2288,8 +2417,10 @@ describe('return statements', () => {
     switch a
       when 'b' then 'c'
       when 'c'
-        c = b if c is 'd'
+        if c is "d"
+          c = b;
     123`;
+
     const expected =
 `var a = (() => {
   var c;
@@ -2300,13 +2431,15 @@ describe('return statements', () => {
       "c";
       break;
     case "c":
-      (c === "d" ? c = b : undefined);
-      break;
+      if (c === "d") {
+        c = b;
+      }
     }
 
     return 123;
   }
 })();`;
+
     expect(compile(example)).toEqual(expected);
   });
 });
@@ -2594,7 +2727,6 @@ modulo1(1, 5);`;
 });
 
 describe('for loops with conditional', () => {
-
   it('handles truthy property', () => {
     const example =
 `
@@ -2603,7 +2735,7 @@ for value in values when foo
 `;
 
     const expected =
-`for (let value of values) {
+`for (var value of values) {
   if (foo) {
     loopAction(value);
   }
@@ -2615,7 +2747,7 @@ for value in values when foo
     const example = `loopAction(value) for value in values when value?`;
 
     const expected =
-`for (let value of values) {
+`for (var value of values) {
   if (typeof value !== "undefined" && value !== null) {
     loopAction(value);
   }
@@ -2631,7 +2763,7 @@ for value in values when foo.bar
 `;
 
     const expected =
-`for (let value of values) {
+`for (var value of values) {
   if (foo.bar) {
     loopAction(value);
   }
@@ -2649,7 +2781,7 @@ for value in values when foo.bar?.qux
     const expected =
 `var ref;
 
-for (let value of values) {
+for (var value of values) {
   if ((ref = foo.bar) != null ? ref.qux : void 0) {
     loopAction(value);
   }
@@ -2664,7 +2796,7 @@ for (let value of values) {
   `;
 
     const expected =
-`for (let value of values) {
+`for (var value of values) {
   if (typeof foo === "function" ? foo() : void 0) {
     loopAction(value);
   }
@@ -2678,7 +2810,7 @@ for (let value of values) {
     const expected =
 `var ref;
 
-for (let value of values) {
+for (var value of values) {
   if (typeof foo !== "undefined" && foo !== null ? ((ref = foo.bar) != null ? (typeof ref.qux === "function" ? ref.qux() : void 0) : void 0) : void 0) {
     loopAction(value);
   }
@@ -2694,7 +2826,7 @@ for value in values when regex?.test(foo.bar) || regex.test(bar.foo)
 `;
 
     const expected =
-`for (let value of values) {
+`for (var value of values) {
   if (((typeof regex !== "undefined" && regex !== null ? regex.test(foo.bar) : void 0)) || regex.test(bar.foo)) {
     loopAction(value);
   }
@@ -2712,7 +2844,7 @@ for value in values when foo.bar?[value] isnt bar[value]
     const expected =
 `var ref;
 
-for (let value of values) {
+for (var value of values) {
   if ((((ref = foo.bar) != null ? ref[value] : void 0)) !== bar[value]) {
     return loopAction(value);
   }
@@ -2728,7 +2860,7 @@ for value in values when value instanceof Foo
 `;
 
     const expected =
-`for (let value of values) {
+`for (var value of values) {
   if (value instanceof Foo) {
     loopAction(value);
   }
