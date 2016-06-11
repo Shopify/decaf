@@ -123,11 +123,11 @@ describe('throw statements', () => {
 });
 
 describe('private class statements', () => {
-  it('throws an error when private calls are used in a class definition', () => {
+  it('prevents private calls in anonymous classes', () => {
     const example =
-`class A
-  boom()
-`;
+`class extends Parent
+  boom()`;
+
     expect(compile.bind(this, example)).toThrow();
   });
 
@@ -151,6 +151,60 @@ class A {
   static a = 43214;
   a() {}
 }`);
+  });
+
+  it('moves static calls within class to after the class definition', () => {
+    const example = `
+class A.B.C
+  D()
+
+  x: -> bar()
+`;
+
+    expect(compile(example)).toEqual(
+`A.B.C = class C {
+  x() {
+    return bar();
+  }
+};
+
+D();`
+    );
+  });
+
+  it('moves static class method calls to after the class definition', () => {
+    const example = `
+class A.B.C
+  @foo("bar")
+`;
+
+    expect(compile(example)).toEqual(
+`A.B.C = class C {};
+C.foo("bar");`
+    );
+  });
+
+  it('converts @prototype to Classname.prototype', () => {
+    const example = `
+class A.B
+  C.Mixin(@prototype, D.E.prototype)
+`;
+    expect(compile(example)).toEqual(
+`A.B = class B {};
+C.Mixin(B.prototype, D.E.prototype);`
+    );
+  });
+
+  it('converts this:: calls to Classname.prototype', () => {
+    const example = `
+class A.B
+  C.Mixin(this::, D.E::)
+`;
+
+    expect(compile(example)).toEqual(
+`A.B = class B {};
+C.Mixin(B.prototype, D.E.prototype);`
+    );
   });
 });
 

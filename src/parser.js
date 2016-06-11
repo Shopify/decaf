@@ -347,21 +347,11 @@ function mapClassExpressions(expressions, meta) {
   }, []);
 }
 
-function disallowPrivateClassStatements(node) {
-  if (any(node.expressions, expr => (
-    expr.constructor.name === 'Call'
-  ))) {
-    throwError(node.locationData, 'Private Class statements are not allowed.');
-  }
-}
-
 function mapClassBody(node, meta) {
   const {expressions} = node;
   const boundMethods = getBoundMethodNames(expressions, meta);
   const classElements = mapClassExpressions(expressions, meta);
   let constructor = findWhere(classElements, {kind: 'constructor'});
-
-  disallowPrivateClassStatements(node);
 
   if (boundMethods.length > 0) {
     if (constructor === undefined) {
@@ -653,6 +643,11 @@ function mapStatement(node, meta) {
   return b.expressionStatement(mapExpression(node, meta));
 }
 
+function getClassName(classNode) {
+  const nameProperties = classNode.variable.properties;
+  return nameProperties[nameProperties.length - 1].name.value;
+}
+
 function mapClassPrivateVariables(classNode, meta) {
   return classNode.body.expressions.filter(classExpression =>
     classExpression.constructor.name === 'Assign' && get(classExpression, 'variable.this') !== true
@@ -661,13 +656,41 @@ function mapClassPrivateVariables(classNode, meta) {
   );
 }
 
+function mapClassPrivateCalls(classNode, meta) {
+  const privateCalls = classNode.body.expressions
+    .filter(classExpression => classExpression.constructor.name === 'Call')
+    .map(call => b.expressionStatement(mapExpression(call, meta)));
+
+  if (privateCalls.length === 0) {
+    return [];
+  }
+
+  if (!classNode.variable) {
+    throw new Error('Anonymous classes cannot contain private calls');
+  }
+
+  jsc(privateCalls).find(jsc.MemberExpression, {
+    object: {name: 'this'},
+  }).replaceWith(path =>
+    b.memberExpression(
+      b.identifier(getClassName(classNode)),
+      path.node.property
+    )
+  );
+
+  return privateCalls;
+}
+
 function mapBlockStatements(node, meta) {
   return flatten(node.expressions.map(expr => {
     const type = expr.constructor.name;
     const privateVars = [];
+    const privateCalls = [];
     let prototypeProps = [];
     if (type === 'Class') {
       privateVars.push(...mapClassPrivateVariables(expr, meta));
+      privateCalls.push(...mapClassPrivateCalls(expr, meta));
+
       // extract prototype assignments
       prototypeProps = flatten(expr.body.expressions
         .filter(ex => (ex.constructor.name === 'Value'))
@@ -693,7 +716,10 @@ function mapBlockStatements(node, meta) {
         ));
     }
 
-    return privateVars.concat([mapStatement(expr, meta)]).concat(prototypeProps);
+    return privateVars
+      .concat([mapStatement(expr, meta)])
+      .concat(privateCalls)
+      .concat(prototypeProps);
   }));
 }
 
