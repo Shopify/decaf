@@ -345,8 +345,7 @@ function mapClassExpressions(expressions, meta) {
 
 function disallowPrivateClassStatements(node) {
   if (any(node.expressions, expr => (
-    expr.constructor.name === 'Call' ||
-    (expr.constructor.name === 'Assign' && get(expr, 'variable.this') !== true)
+    expr.constructor.name === 'Call'
   ))) {
     throwError(node.locationData, 'Private Class statements are not allowed.');
   }
@@ -643,11 +642,21 @@ function mapStatement(node, meta) {
   return b.expressionStatement(mapExpression(node, meta));
 }
 
+function mapClassPrivateVariables(classNode, meta) {
+  return classNode.body.expressions.filter(classExpression =>
+    classExpression.constructor.name === 'Assign' && get(classExpression, 'variable.this') !== true
+  ).map(classExpression =>
+    b.expressionStatement(mapExpression(classExpression, meta))
+  );
+}
+
 function mapBlockStatements(node, meta) {
   return flatten(node.expressions.map(expr => {
     const type = expr.constructor.name;
+    const privateVars = [];
     let prototypeProps = [];
     if (type === 'Class') {
+      privateVars.push(...mapClassPrivateVariables(expr, meta));
       // extract prototype assignments
       prototypeProps = flatten(expr.body.expressions
         .filter(ex => (ex.constructor.name === 'Value'))
@@ -673,7 +682,7 @@ function mapBlockStatements(node, meta) {
         ));
     }
 
-    return [mapStatement(expr, meta)].concat(prototypeProps);
+    return privateVars.concat([mapStatement(expr, meta)]).concat(prototypeProps);
   }));
 }
 
