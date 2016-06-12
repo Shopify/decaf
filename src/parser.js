@@ -217,7 +217,7 @@ function mapArguments(args, meta) {
     if (type === 'Arr') {
       return mapArrayPattern(arg.name, meta);
     } else if (type === 'Obj') {
-      return mapObjectPattern(arg.name.properties, meta, true);
+      return mapObjectPattern(arg.name.properties, meta);
     }
 
     return mapExpression(arg, meta);
@@ -1038,21 +1038,6 @@ function mapFunction(node, meta) {
     setupStatements = tailStatements.concat(setupStatements);
   }
 
-  if (meta.scope.paramThisDestructures) {
-    setupStatements = meta.scope.paramThisDestructures.map(paramThisDestructure => (
-      b.expressionStatement(
-        b.assignmentExpression(
-          '=',
-          b.memberExpression(
-            b.thisExpression(),
-            paramThisDestructure
-          ),
-          paramThisDestructure
-        )
-      )
-    ));
-  }
-
   // since we are going to be using an arrow function, we can throw away the special
   // context that CoffeeScript created for us
   meta.scope.method.context = 'this';
@@ -1667,20 +1652,14 @@ function mapObjectPatternItem(node, meta) {
   throwError(node.locationData, `can't convert node of type: ${type} to ObjectPatternItem - not recognized`);
 }
 
-function mapObjectPattern(nodes, meta, extractThis = false) {
+function mapObjectPattern(nodes, meta) {
   return b.objectPattern(nodes.map(node => {
     const {operatorToken} = node;
     let prop;
-    const key = mapKey(node.variable || node, meta);
-
-    if (extractThis && node.properties && node.properties.length) {
-      meta.scope.paramThisDestructures = meta.scope.paramThisDestructures || [];
-      meta.scope.paramThisDestructures.push(key);
-    }
 
     prop = b.property(
       'init',
-      key,
+      mapKey(node.variable || node, meta),
       mapObjectPatternItem(node, meta)
     );
 
