@@ -897,23 +897,28 @@ class A extends B {
 describe('existential assignment', () => {
   it('handles soaked variable', () => {
     const example = `foo?.bar = "buzz" || ""`;
-    const expected = `(foo != null ? foo.bar = "buzz" || "" : void 0);`;
+    const expected =
+`if (foo != null) {
+  foo.bar = "buzz" || "";
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('handles soaked variable property', () => {
     const example = `foo.bar?.car = "qux"`;
     const expected =
-`var ref;
-((ref = foo.bar) != null ? ref.car = "qux" : void 0);`;
+`if (foo.bar != null) {
+  foo.bar.car = "qux";
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('handles soaked method call', () => {
     const example = `foo.bar()?.car = "qux"`;
     const expected =
-`var ref;
-((ref = foo.bar()) != null ? ref.car = "qux" : void 0);`;
+`if (foo.bar() != null) {
+  foo.bar().car = "qux";
+}`;
     expect(compile(example)).toEqual(expected);
   });
 
@@ -924,16 +929,19 @@ describe('existential assignment', () => {
 
     const expected =
 `var bam = function() {
-  return (foo != null ? foo.bar = "buzz" : void 0);
+  if (foo != null) {
+    return foo.bar = "buzz";
+  }
 };`;
     expect(compile(example)).toEqual(expected);
   });
 
   it('handles increment-assign', () => {
-    const example = `foo.bar?.car += qux`
+    const example = `foo.bar?.car += qux`;
     const expected =
-`var ref;
-((ref = foo.bar) != null ? ref.car += qux : void 0);`;
+`if (foo.bar != null) {
+  foo.bar.car += qux;
+}`;
     expect(compile(example)).toEqual(expected);
   });
 });
