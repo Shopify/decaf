@@ -123,15 +123,34 @@ describe('throw statements', () => {
 });
 
 describe('private class statements', () => {
-  it('throws an error when private statements are used in a class definition', () => {
+  it('throws an error when private calls are used in a class definition', () => {
     const example =
 `class A
   boom()
-  a = 123
-  @a = 43214
-  a: () ->
 `;
     expect(compile.bind(this, example)).toThrow();
+  });
+
+  it('moves private class vars to before the class definition', () => {
+    const example =
+`class A
+  @a = 43214
+  a = 123
+  a: () ->
+  b = (c) ->
+    c()
+`;
+    expect(compile(example)).toEqual(
+`var a = 123;
+
+var b = function(c) {
+  return c();
+};
+
+class A {
+  static a = 43214;
+  a() {}
+}`);
   });
 });
 
