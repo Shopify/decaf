@@ -174,13 +174,13 @@ D();`
 
   it('moves static class method calls to after the class definition', () => {
     const example = `
-class A.B.C
+class A
   @foo("bar")
 `;
 
     expect(compile(example)).toEqual(
-`A.B.C = class C {};
-C.foo("bar");`
+`class A {}
+A.foo("bar");`
     );
   });
 

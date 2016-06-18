@@ -643,9 +643,13 @@ function mapStatement(node, meta) {
   return b.expressionStatement(mapExpression(node, meta));
 }
 
-function getClassName(classNode) {
-  const nameProperties = classNode.variable.properties;
-  return nameProperties[nameProperties.length - 1].name.value;
+function getClassName({variable}) {
+  const nameProperties = variable.properties;
+  if (nameProperties.length > 0) {
+    return nameProperties[nameProperties.length - 1].name.value;
+  }
+
+  return variable.base.value;
 }
 
 function mapClassPrivateVariables(classNode, meta) {
