@@ -1286,25 +1286,25 @@ function mapSwitchStatement(node, meta) {
   );
 }
 
-function mapForGuard(guardNode, blockStatement, meta) {
+function mapForGuard(guardNode, meta) {
   const isExistential = guardNode.constructor.name === 'Existence';
   const guardClause = isExistential ?
     mapExistentialExpression(guardNode, meta) :
     mapOp(guardNode.expression || guardNode, meta);
 
-  return b.blockStatement([
-    b.ifStatement(
-      guardClause,
-      blockStatement
-    ),
-  ]);
+  return guardClause;
 }
 
 function mapForStatement(node, meta) {
   let blockStatement = mapBlockStatement(node.body, meta);
 
   if (node.guard) {
-    blockStatement = mapForGuard(node.guard, blockStatement, meta);
+    blockStatement = b.blockStatement([
+      b.ifStatement(
+        mapForGuard(node.guard, meta),
+        blockStatement
+      ),
+    ]);
   }
 
   if (node.object === false) {
@@ -1409,6 +1409,26 @@ function mapLeftHandForExpression(node, meta) {
   return mapExpression(node.source, meta);
 }
 
+function mapForGuardToFilter(guardNode, target, args, meta) {
+  if (!guardNode) {
+    return null;
+  }
+
+  const guardClause = mapForGuard(guardNode, meta);
+  return b.callExpression(
+    b.memberExpression(
+      target,
+      b.identifier('filter')
+    ),
+    [
+      b.arrowFunctionExpression(
+        args,
+        guardClause
+      ),
+    ]
+  );
+}
+
 function mapForExpression(node, meta) {
   const leftHand = mapLeftHandForExpression(node, meta);
   const args = [];
@@ -1439,15 +1459,25 @@ function mapForExpression(node, meta) {
     }
   }
 
+  const blockStatement = mapBlockStatement(node.body, meta);
+  const filterCall = mapForGuardToFilter(node.guard, target, args, meta);
+  if (filterCall) {
+    const hasNoLoopTransformLogic = (
+      blockStatement.body.length === 1 &&
+      n.Identifier.check(blockStatement.body[0].expression)
+    );
+
+    if (hasNoLoopTransformLogic) {
+      return filterCall;
+    }
+  }
+
   return b.callExpression(
-    b.memberExpression(
-      target,
-      b.identifier('map')
-    ),
+    b.memberExpression(filterCall || target, b.identifier('map')),
     [
       b.arrowFunctionExpression(
         args,
-        addReturnStatementToBlock(mapBlockStatement(node.body, meta))
+        addReturnStatementToBlock(blockStatement)
       ),
     ]
   );
