@@ -846,13 +846,19 @@ function mapSoakedChainToConditions({properties, base}, meta) {
 }
 
 function mapInArrayExpression(node, meta) {
-  return b.memberExpression(
+  let test = b.memberExpression(
     mapExpression(node.array, meta),
     b.callExpression(
       b.identifier('includes'),
       [mapExpression(node.object, meta)]
     )
   );
+
+  if (node.negated) {
+    test = b.unaryExpression('!', test);
+  }
+
+  return test;
 }
 
 function extractAssignStatementsByArguments(nodes) {
