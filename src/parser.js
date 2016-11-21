@@ -89,12 +89,26 @@ function mapKey(node) {
 }
 
 function mapObjectExpression(node, meta) {
-  return b.objectExpression(node.base.properties.map(property =>
-    b.property(
+  return b.objectExpression(node.base.properties.map(property => {
+    let keyExpression;
+    let valueExpression;
+    if (nodeHasProperties(property)) {
+      keyExpression = mapExpression(property.properties[0], meta);
+      valueExpression = mapMemberExpression(property, meta);
+    } else {
+      keyExpression = mapExpression(property.variable || property.base, meta);
+      valueExpression = mapExpression(property.value || property.base, meta);
+    }
+
+    const result = b.property(
       'init',
-      mapExpression(property.variable || property.base, meta),
-      mapExpression(property.value || property.base, meta))
-  ));
+      keyExpression,
+      valueExpression
+    );
+
+    //result.shorthand = (keyExpression.name === valueExpression.name);
+    return result;
+  }));
 }
 
 function mapArrayExpression(node, meta) {

@@ -52,6 +52,25 @@ describe('Values', () => {
     expect(compile('false')).toEqual('false;');
   });
 
+  it('object shorthand', () => {
+    const example = `
+class A
+  foo: ->
+    bar({@baz, qux})
+`;
+
+    expect(compile(example)).toEqual(
+`class A {
+  foo() {
+    return bar({
+      baz: this.baz,
+      qux
+    });
+  }
+}`
+    );
+  });
+
   it('undefined', () => {
     expect(compile('undefined')).toEqual('undefined;');
   });
