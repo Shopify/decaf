@@ -106,7 +106,7 @@ function mapObjectExpression(node, meta) {
       valueExpression
     );
 
-    //result.shorthand = (keyExpression.name === valueExpression.name);
+    result.shorthand = (keyExpression.name === valueExpression.name);
     return result;
   }));
 }
