@@ -13,6 +13,8 @@ import isArray from 'lodash/lang/isArray';
 import any from 'lodash/collection/any';
 import jsc from 'jscodeshift';
 
+const DEFAULT_CATCH_VARIABLE_NAME = 'err';
+
 // regexes taken from coffeescript parser
 const IS_NUMBER = /^[+-]?(?:0x[\da-f]+|\d*\.?\d+(?:e[+-]?\d+)?)$/i;
 const IS_STRING = /^['"]/;
@@ -592,7 +594,9 @@ function mapTryCatchBlock(node, meta) {
   let catchBlock = null;
   if (node.recovery) {
     const recovery = mapBlockStatement(node.recovery, meta);
-    const errorVar = mapLiteral({base: node.errorVariable}, meta);
+    const errorVar = node.errorVariable ?
+      mapLiteral({base: node.errorVariable}, meta) :
+      b.identifier(meta.scope.freeVariable(DEFAULT_CATCH_VARIABLE_NAME));
 
     catchBlock = b.catchClause(
       errorVar,

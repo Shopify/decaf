@@ -1979,6 +1979,29 @@ finally
     expect(compile(example)).toEqual(expected);
   });
 
+  it('inserts missing catch var', () => {
+    const example = `
+try
+  foo()
+catch
+  try
+    bar()
+  catch
+    return
+`;
+    const expected =
+`try {
+  foo();
+} catch (err1) {
+  try {
+    bar();
+  } catch (err) {
+    return;
+  }
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
   it('maps try expressions', () => {
     const example = `x = try y()`;
     const expected =
