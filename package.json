@@ -1,6 +1,6 @@
 {
   "name": "shopify-decaf",
-  "version": "0.4.16",
+  "version": "0.4.17",
   "description": "A coffeescript to es6 transpiler",
   "repository": {
     "type": "git",
