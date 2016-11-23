@@ -1971,13 +1971,20 @@ finally
 try
   foo()
 catch
-  return
+  try
+    bar()
+  catch
+    return
 `;
     const expected =
 `try {
   foo();
-} catch (err) {
-  return;
+} catch (err1) {
+  try {
+    bar();
+  } catch (err) {
+    return;
+  }
 }`;
     expect(compile(example)).toEqual(expected);
   });

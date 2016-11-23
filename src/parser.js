@@ -582,7 +582,7 @@ function mapTryCatchBlock(node, meta) {
     const recovery = mapBlockStatement(node.recovery, meta);
     const errorVar = node.errorVariable ?
       mapLiteral({base: node.errorVariable}, meta) :
-      b.identifier(DEFAULT_CATCH_VARIABLE_NAME);
+      b.identifier(meta.scope.freeVariable(DEFAULT_CATCH_VARIABLE_NAME));
 
     catchBlock = b.catchClause(
       errorVar,
