@@ -141,6 +141,27 @@ describe('throw statements', () => {
   });
 });
 
+describe('inner classes', () => {
+  it('should be declared before outer class', () => {
+    const example = `
+class Foo
+  @foo: 1;
+
+  class Bar
+    @bar: 2
+`;
+    const expected =
+`class Bar {
+  static bar = 2;
+}
+
+class Foo {
+  static foo = 1;
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+});
+
 describe('private class statements', () => {
   it('prevents private calls in anonymous classes', () => {
     const example =

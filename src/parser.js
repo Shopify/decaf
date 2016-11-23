@@ -670,6 +670,12 @@ function mapClassPrivateVariables(classNode, meta) {
   );
 }
 
+function mapInnerClasses(classNode, meta) {
+  return classNode.body.expressions
+    .filter(classExpression => classExpression.constructor.name === 'Class')
+    .map(innerClass => mapClassDeclaration(innerClass, meta));
+}
+
 function mapClassPrivateCalls(classNode, meta) {
   const privateCalls = classNode.body.expressions
     .filter(classExpression => classExpression.constructor.name === 'Call')
@@ -700,10 +706,13 @@ function mapBlockStatements(node, meta) {
     const type = expr.constructor.name;
     const privateVars = [];
     const privateCalls = [];
+    const innerClasses = [];
+
     let prototypeProps = [];
     if (type === 'Class') {
       privateVars.push(...mapClassPrivateVariables(expr, meta));
       privateCalls.push(...mapClassPrivateCalls(expr, meta));
+      innerClasses.push(...mapInnerClasses(expr, meta));
 
       // extract prototype assignments
       prototypeProps = flatten(expr.body.expressions
@@ -731,6 +740,7 @@ function mapBlockStatements(node, meta) {
     }
 
     return privateVars
+      .concat(innerClasses)
       .concat([mapStatement(expr, meta)])
       .concat(privateCalls)
       .concat(prototypeProps);
