@@ -88,6 +88,17 @@ function mapKey(node) {
   }
 }
 
+function isKeyValueMatch(key, value) {
+  if (!n.Identifier.check(value)) {
+    return false;
+  }
+
+  return (
+    (n.Literal.check(key) && key.value === value.name) ||
+    (n.Identifier.check(key) && key.name === value.name)
+  );
+}
+
 function mapObjectExpression(node, meta) {
   return b.objectExpression(node.base.properties.map(property => {
     let keyExpression;
@@ -98,6 +109,10 @@ function mapObjectExpression(node, meta) {
     } else {
       keyExpression = mapExpression(property.variable || property.base, meta);
       valueExpression = mapExpression(property.value || property.base, meta);
+
+      if (isKeyValueMatch(keyExpression, valueExpression)) {
+        keyExpression = valueExpression;
+      }
     }
 
     const result = b.property(
@@ -105,8 +120,7 @@ function mapObjectExpression(node, meta) {
       keyExpression,
       valueExpression
     );
-
-    result.shorthand = (keyExpression.name === valueExpression.name);
+    result.shorthand = (keyExpression === valueExpression);
     return result;
   }));
 }
