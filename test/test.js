@@ -56,7 +56,15 @@ describe('Values', () => {
     const example = `
 class A
   foo: ->
-    bar({@baz, qux})
+    bar({
+      @baz,
+      qux,
+      "foobar": foobar,
+      bar: qux,
+      baz: "baz",
+      qux: (1 + 2),
+      "foo": {}
+    })
 `;
 
     expect(compile(example)).toEqual(
@@ -64,7 +72,12 @@ class A
   foo() {
     return bar({
       baz: this.baz,
-      qux
+      qux,
+      foobar,
+      bar: qux,
+      baz: "baz",
+      qux: (1 + 2),
+      "foo": {}
     });
   }
 }`
