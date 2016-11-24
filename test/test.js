@@ -2216,6 +2216,40 @@ describe('comprehensions', () => {
     expect(compile('a(b) for {a, b} in c')).toEqual(expected);
   });
 
+  it('adds default entries value for key, value of foo', () => {
+    const example = `
+say key, value for key, value of foo`;
+
+    const expected =
+`for (var [key, value] of Object.entries(foo || {})) {
+  say(key, value);
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('adds default entries value for key, value of baz.qux', () => {
+    const example =
+`for foo, bar of baz.qux
+  foo(bar)
+`;
+    const expected =
+`for (var [foo, bar] of Object.entries(baz.qux || {})) {
+  foo(bar);
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
+
+  it('adds default entries value for key, value of baz.qux()', () => {
+    const example =
+`for foo, bar of baz.qux()
+  foo(bar)
+`;
+    const expected =
+`for (var [foo, bar] of Object.entries(baz.qux() || {})) {
+  foo(bar);
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
 
   it('say key, value for key, value of {a: 1}', () => {
     const example =
@@ -2321,7 +2355,7 @@ describe('comprehensions', () => {
   it('(c(a) for a, c of b).sort()', () => {
     const example = `(c(a) for a, c of b).sort()`;
     const expected =
-`(Object.entries(b).map(([a, c]) => {
+`(Object.entries(b || {}).map(([a, c]) => {
   return c(a);
 })).sort();`;
     expect(compile(example)).toEqual(expected);
@@ -2330,7 +2364,7 @@ describe('comprehensions', () => {
   it('(a for a of b).sort()', () => {
     const example = `(a for a of b).sort()`;
     const expected =
-`(Object.keys(b).map(a => {
+`(Object.keys(b || {}).map(a => {
   return a;
 })).sort();`;
     expect(compile(example)).toEqual(expected);
