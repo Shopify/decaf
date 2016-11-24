@@ -1343,6 +1343,14 @@ function mapForGuard(guardNode, meta) {
   return guardClause;
 }
 
+function guardLoopSource(source) {
+  if (!n.Identifier.check(source) && !n.MemberExpression.check(source)) {
+    return source;
+  }
+
+  return b.logicalExpression('||', source, b.objectExpression([]));
+}
+
 function mapForStatement(node, meta) {
   let blockStatement = mapBlockStatement(node.body, meta);
 
@@ -1410,7 +1418,7 @@ function mapForStatement(node, meta) {
           b.identifier('Object'),
           b.identifier(method)
         ),
-        [mapExpression(node.source, meta)]
+        [guardLoopSource(mapExpression(node.source, meta))]
       ),
       blockStatement
     );
@@ -1495,7 +1503,7 @@ function mapForExpression(node, meta) {
     }
     target = b.callExpression(
       b.memberExpression(b.identifier('Object'), b.identifier(method)),
-      [leftHand]
+      [guardLoopSource(leftHand)]
     );
   } else {
     target = leftHand;
