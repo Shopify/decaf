@@ -2239,6 +2239,17 @@ say key, value for key, value of foo`;
     expect(compile(example)).toEqual(expected);
   });
 
+  it('adds default entries value for key, value of baz.qux()', () => {
+    const example =
+`for foo, bar of baz.qux()
+  foo(bar)
+`;
+    const expected =
+`for (var [foo, bar] of Object.entries(baz.qux() || {})) {
+  foo(bar);
+}`;
+    expect(compile(example)).toEqual(expected);
+  });
 
   it('say key, value for key, value of {a: 1}', () => {
     const example =

@@ -1344,7 +1344,11 @@ function mapForGuard(guardNode, meta) {
 }
 
 function guardLoopSource(source) {
-  if (!n.Identifier.check(source) && !n.MemberExpression.check(source)) {
+  if (
+    !n.Identifier.check(source) &&
+    !n.MemberExpression.check(source) &&
+    !n.CallExpression.check(source)
+  ) {
     return source;
   }
 
